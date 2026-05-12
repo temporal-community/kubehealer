@@ -2,7 +2,7 @@ import asyncio
 import sys
 
 from dotenv import load_dotenv
-from temporalio.client import Client
+from temporalio.client import Client, WorkflowExecutionStatus
 from temporalio.service import RPCError
 
 load_dotenv()
@@ -32,19 +32,26 @@ async def terminate_stale_workflow(client: Client):
 
 
 async def get_or_start_workflow(client: Client, namespace: str):
-    """Reconnect to an existing conversation or start a new one."""
+    """Reconnect to a running conversation or start a new one.
+
+    A handle + successful query is not enough: Temporal lets you query
+    completed workflows, so we must check the execution status explicitly.
+    """
     try:
         handle = client.get_workflow_handle(WORKFLOW_ID)
-        await handle.query(ConversationWorkflow.get_state)
-        return handle, False
+        desc = await handle.describe()
+        if desc.status == WorkflowExecutionStatus.RUNNING:
+            return handle, False
     except RPCError:
-        handle = await client.start_workflow(
-            ConversationWorkflow.run,
-            ConversationInput(namespace=namespace, session_id=WORKFLOW_ID),
-            id=WORKFLOW_ID,
-            task_queue="kubehealer",
-        )
-        return handle, True
+        pass
+
+    handle = await client.start_workflow(
+        ConversationWorkflow.run,
+        ConversationInput(namespace=namespace, session_id=WORKFLOW_ID),
+        id=WORKFLOW_ID,
+        task_queue="kubehealer",
+    )
+    return handle, True
 
 
 async def main():
@@ -94,10 +101,17 @@ async def main():
             print(f"\033[2K\n{response}\n")
         except RPCError as e:
             error_msg = str(e)
-            # Workflow terminated or gone — start fresh
+            # Workflow terminated or gone — start fresh and retry the message
             if "workflow execution already completed" in error_msg.lower():
                 print(f"\033[2K  \033[93mSession expired. Starting fresh...\033[0m")
                 handle, _ = await get_or_start_workflow(client, namespace)
+                try:
+                    response = await handle.execute_update(
+                        ConversationWorkflow.send_message, user_input
+                    )
+                    print(f"\033[2K\n{response}\n")
+                except Exception as retry_err:
+                    print(f"\033[2K  \033[91mError after restart: {retry_err}\033[0m\n")
                 continue
             print(f"\033[2K  \033[91mError: {e}\033[0m\n")
         except Exception as e:

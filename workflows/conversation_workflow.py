@@ -208,7 +208,9 @@ class ConversationWorkflow:
         self._namespace = input.namespace
         self._session_id = input.session_id
 
-        # Restore state from continue-as-new
+        # Restore state from continue-as-new. Each restore is guarded so we
+        # never clobber state already mutated by an update handler that fired
+        # before run() reached its first await.
         if input.messages:
             self._messages = list(input.messages)
         if input.healing_diagnoses:
@@ -218,7 +220,8 @@ class ConversationWorkflow:
             decided = set(input.healing_decisions.keys())
             all_pods = {d["pod_name"] for d in input.healing_diagnoses}
             self._healing_pending = list(all_pods - decided)
-        self._turn_count = input.turn_count
+        if input.turn_count:
+            self._turn_count = input.turn_count
 
         # Wait until exit or continue-as-new is needed
         await workflow.wait_condition(
