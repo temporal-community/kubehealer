@@ -44,7 +44,9 @@ body::after {
   flex: 1; min-height: 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: minmax(0, 1.25fr) minmax(0, 0.9fr) auto;
+  /* cluster gets a firm min so pod cards always show in full; agent/mcp and the
+     approvals drawer flex around it (each scrolls internally if content overflows). */
+  grid-template-rows: minmax(0, 1.05fr) minmax(190px, auto) minmax(0, 1.05fr);
   grid-template-areas:
     "agent   mcp"
     "cluster cluster"
@@ -64,12 +66,17 @@ body::after {
 }
 
 .panel-hd {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px; border-bottom: 1px solid var(--line);
-  font-family: var(--display); font-weight: 600; letter-spacing: 0.14em;
-  font-size: 12px; text-transform: uppercase; color: var(--green);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 14px; border-bottom: 1px solid var(--line);
+  font-family: var(--display); font-weight: 600; letter-spacing: 0.12em;
+  font-size: 14px; text-transform: uppercase; color: var(--green);
 }
-.panel-hd .tag { color: var(--dim); letter-spacing: 0.05em; font-family: var(--mono); }
+.panel-hd .tag { color: var(--dim); letter-spacing: 0.05em; font-family: var(--mono); text-transform: none; font-weight: 400; font-size: 11px; }
+.panel-hd .tag-warn { color: var(--amber); }
+
+/* the MCP box reads as the fragile / break-target plane */
+.panel.fragile { border-color: rgba(255,179,71,0.4); box-shadow: inset 0 2px 0 rgba(255,179,71,0.55); }
+.panel.fragile .panel-hd { color: var(--amber); border-bottom-color: rgba(255,179,71,0.3); }
 .panel-bd { padding: 10px 12px; overflow: auto; flex: 1; min-height: 0; }
 .panel-bd::-webkit-scrollbar { width: 6px; }
 .panel-bd::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 3px; }
@@ -87,9 +94,12 @@ body::after {
 
 .badge {
   display: flex; align-items: center; gap: 8px;
-  border: 1px solid var(--line); border-radius: 3px; padding: 6px 11px;
-  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  border: 1px solid var(--line); border-radius: 3px; padding: 7px 13px;
+  font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
 }
+.badge-sub { color: var(--dim); }
+.badge.alive .badge-sub { color: var(--green-dim); }
+.badge.dead .badge-sub { color: rgba(255,90,77,0.7); }
 .badge .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); }
 .badge.alive { border-color: var(--line-strong); color: var(--green); }
 .badge.alive .dot { background: var(--green); box-shadow: 0 0 10px var(--green); animation: pulse 1.6s infinite; }
@@ -100,7 +110,7 @@ body::after {
 /* ── control bar ────────────────────────────────────────── */
 .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .btn {
-  font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em;
+  font-family: var(--mono); font-size: 13px; letter-spacing: 0.05em;
   color: var(--text); background: rgba(61,252,164,0.04);
   border: 1px solid var(--line-strong); border-radius: 3px;
   padding: 9px 14px; cursor: pointer; transition: all .15s ease;
@@ -167,9 +177,9 @@ body::after {
   min-width: 0; border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px 16px;
   position: relative; overflow: hidden; transition: border-color .3s, box-shadow .3s;
 }
-.pod .app { font-family: var(--display); font-size: 15px; letter-spacing: 0.06em; overflow-wrap: anywhere; }
+.pod .app { font-family: var(--display); font-size: 19px; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+.pod .status { font-size: 16px; font-weight: 600; margin-top: 8px; letter-spacing: 0.06em; text-transform: uppercase; overflow-wrap: anywhere; }
 .pod .meta { font-size: 11px; color: var(--dim); margin-top: 6px; line-height: 1.5; overflow-wrap: anywhere; }
-.pod .status { font-size: 12px; margin-top: 8px; letter-spacing: 0.08em; text-transform: uppercase; overflow-wrap: anywhere; }
 .pod.bad { border-color: rgba(255,90,77,0.55); box-shadow: inset 0 0 24px rgba(255,90,77,0.06); }
 .pod.bad .status { color: var(--red); }
 .pod.good { border-color: var(--line-strong); box-shadow: inset 0 0 24px rgba(61,252,164,0.05); }

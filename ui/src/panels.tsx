@@ -6,7 +6,6 @@ import { PHASES } from "./types";
 export function Header() {
   const mcp = useStore((s) => s.mcpAlive);
   const tmp = useStore((s) => s.temporalAlive);
-  const conn = useStore((s) => s.connected);
   return (
     <div className="header">
       <div className="brand-row">
@@ -18,19 +17,18 @@ export function Header() {
         </div>
       </div>
       <div className="badges">
-        <Badge label="MCP Server" alive={mcp} />
-        <Badge label="Temporal" alive={tmp} />
-        <Badge label="Gateway" alive={conn} />
+        <Badge label="MCP Server" sub="fragile" alive={mcp} />
+        <Badge label="Temporal" sub="durable" alive={tmp} />
       </div>
     </div>
   );
 }
 
-function Badge({ label, alive }: { label: string; alive: boolean }) {
+function Badge({ label, sub, alive }: { label: string; sub?: string; alive: boolean }) {
   return (
     <div className={`badge ${alive ? "alive" : "dead"}`}>
       <span className="dot" />
-      {label} · {alive ? "LIVE" : "DOWN"}
+      {label}{sub ? <span className="badge-sub"> · {sub}</span> : null} · {alive ? "LIVE" : "DOWN"}
     </div>
   );
 }
@@ -40,12 +38,12 @@ export function ControlBar() {
   const send = useStore((s) => s.send);
   return (
     <div className="controls">
-      <button className="btn amber" onClick={() => send({ action: "inject_chaos" })}>Inject Chaos</button>
-      <button className="btn" onClick={() => send({ action: "start_heal", mode: "hitl" })}>▶ Start Heal (HITL)</button>
-      <button className="btn" onClick={() => send({ action: "start_heal", mode: "auto" })}>Auto Heal</button>
+      <button className="btn amber" onClick={() => send({ action: "inject_chaos" })}>Break Pods (Inject Chaos)</button>
+      <button className="btn" onClick={() => send({ action: "start_heal", mode: "hitl" })}>▶ Heal (you approve)</button>
+      <button className="btn" onClick={() => send({ action: "start_heal", mode: "auto" })}>Auto Heal (AI decides)</button>
       <button className="btn" onClick={() => send({ action: "reset_cluster" })}>Reset</button>
       <span className="spacer" />
-      <span className="hint">break the plane the agent talks to ↓</span>
+      <span className="hint">kill the AI's link — Temporal keeps healing ↓</span>
       <button className="btn danger" onClick={() => send({ action: "break_server" })}>💥 Break MCP Server</button>
       <button className="btn" onClick={() => send({ action: "restart_server" })}>Restart</button>
     </div>
@@ -58,7 +56,7 @@ export function AgentPanel() {
   const current = useStore((s) => s.agentCurrent);
   return (
     <div className="panel">
-      <div className="panel-hd">Agent <span className="tag">claude · mcp host</span></div>
+      <div className="panel-hd">AI Agent <span className="tag">Claude — reasons &amp; decides</span></div>
       <div className="panel-bd agent-stream">
         {blocks.length === 0 && !current && (
           <div className="agent-empty">Idle. Hit “Start Heal” to dispatch the agent.</div>
@@ -80,14 +78,16 @@ export function McpPanel() {
   const tools = useStore((s) => s.tools);
   const taskId = useStore((s) => s.taskId);
   return (
-    <div className="panel">
-      <div className="panel-hd">MCP Plane <span className="tag">fragile · a process</span></div>
+    <div className="panel fragile">
+      <div className="panel-hd">
+        MCP Server <span className="tag tag-warn">⚠ the AI's link — you'll break this</span>
+      </div>
       <div className="panel-bd">
         <div className={`mcp-signal ${alive ? "alive" : "dead"}`}>
           <span className="state">{alive ? "LIVE" : "DEAD"}</span>
           <Ekg alive={alive} />
         </div>
-        {taskId && <div className="task-chip">◇ SEP-1686 Task · {taskId.slice(0, 18)}…</div>}
+        {taskId && <div className="task-chip">◇ durable task · {taskId.slice(0, 18)}…</div>}
         <div className="tools">
           {tools.length === 0 && <div className="empty">No tool calls yet.</div>}
           {tools.slice().reverse().map((t) => (
@@ -175,16 +175,16 @@ export function ClusterPanel() {
   const pods = useStore((s) => s.pods);
   return (
     <div className="panel cluster-strip">
-      <div className="panel-hd">Kubernetes Cluster <span className="tag">kind · ns/default</span></div>
+      <div className="panel-hd">Kubernetes Cluster <span className="tag">your apps</span></div>
       <div className="panel-bd">
         <div className="pods">
-          {pods.length === 0 && <div className="empty">No pods. Inject chaos to begin.</div>}
+          {pods.length === 0 && <div className="empty">No pods. Hit “Break Pods (Inject Chaos)” to begin.</div>}
           {pods.map((p) => (
             <motion.div layout className={`pod ${p.healthy ? "good" : "bad"}`} key={p.name}
               initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
               <div className="app">{p.app}</div>
-              <div className="meta">{p.name} · ready {p.ready} · restarts {p.restarts}</div>
-              <div className="status">{p.healthy ? "● healthy" : "✗ " + p.status}</div>
+              <div className="status">{p.healthy ? "● HEALTHY" : "✗ " + p.status}</div>
+              <div className="meta">ready {p.ready} · restarts {p.restarts}</div>
               <div className="bar" />
             </motion.div>
           ))}
@@ -201,14 +201,14 @@ export function ApprovalDrawer() {
   if (!wf || !wf.diagnoses?.length) {
     return (
       <div className="panel">
-        <div className="panel-hd">Human-in-the-loop <span className="tag">approvals</span></div>
+        <div className="panel-hd">Your Approvals <span className="tag">you decide each fix</span></div>
         <div className="panel-bd"><div className="empty">No pending decisions.</div></div>
       </div>
     );
   }
   return (
     <div className="panel">
-      <div className="panel-hd">Human-in-the-loop <span className="tag">{wf.needs_approval ? "awaiting you" : "decided"}</span></div>
+      <div className="panel-hd">Your Approvals <span className="tag">{wf.needs_approval ? "awaiting you" : "decided"}</span></div>
       <div className="panel-bd">
         <div className="approvals">
           {wf.diagnoses.map((d) => {
