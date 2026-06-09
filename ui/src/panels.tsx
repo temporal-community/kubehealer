@@ -75,7 +75,6 @@ export function AgentPanel() {
 export function McpPanel() {
   const alive = useStore((s) => s.mcpAlive);
   const tools = useStore((s) => s.tools);
-  const taskId = useStore((s) => s.taskId);
   return (
     <div className="panel fragile">
       <div className="panel-hd">
@@ -86,7 +85,6 @@ export function McpPanel() {
           <span className="state">{alive ? "LIVE" : "DEAD"}</span>
           <Ekg alive={alive} />
         </div>
-        {taskId && <div className="task-chip">◇ durable task · {taskId.slice(0, 18)}…</div>}
         <div className="tools">
           {tools.length === 0 && <div className="empty">No tool calls yet.</div>}
           {tools.slice().reverse().map((t) => (
