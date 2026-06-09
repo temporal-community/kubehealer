@@ -111,6 +111,10 @@ class HealerWorkflow:
         else:
             self._phase = "awaiting_approval"
             workflow.logger.info("Waiting for human approval...")
+            # Durable, indefinite wait: survives worker/MCP-server crashes. A human
+            # (or the agent) can take minutes or days to approve — the workflow simply
+            # waits, forever if need be. No timeout: a timeout here would RAISE and
+            # crash the heal, defeating the durability guarantee this demo is about.
             await workflow.wait_condition(self._all_decided)
             workflow.logger.info("All decisions received.")
 

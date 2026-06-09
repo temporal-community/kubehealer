@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import os
 import time
 
 from dotenv import load_dotenv
@@ -16,7 +17,7 @@ async def main():
     parser.add_argument("--namespace", default="default", help="Kubernetes namespace to scan")
     args = parser.parse_args()
 
-    client = await Client.connect("localhost:7233")
+    client = await Client.connect(os.environ.get("TEMPORAL_TARGET", "localhost:7233"))
 
     workflow_id = f"kubehealer-{int(time.time())}"
     print(f"🚀 Starting KubeHealer workflow (id={workflow_id})...")

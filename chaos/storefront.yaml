@@ -1,20 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: config-app
+  name: storefront
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: config-app
+      app: storefront
   template:
     metadata:
       labels:
-        app: config-app
+        app: storefront
     spec:
       containers:
       - name: nginx
-        image: nginx:latest
-        envFrom:
-        - configMapRef:
-            name: app-config
+        image: nginx:latestt
+        ports:
+        - containerPort: 80

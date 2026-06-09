@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: memory-hog
+  name: checkout-api
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: memory-hog
+      app: checkout-api
   template:
     metadata:
       labels:
-        app: memory-hog
+        app: checkout-api
     spec:
       containers:
       - name: stress
