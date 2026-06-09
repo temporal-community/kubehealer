@@ -62,6 +62,33 @@ async def fix(diagnosis: Diagnosis) -> HealResult:
 ACTIVITIES = [scan_one, details, diagnose, fix]
 
 
+# Two-pod stubs (for the incremental-approval test): details echoes the pod name so
+# diagnose can produce a distinct Diagnosis per pod.
+@activity.defn(name="scan_cluster")
+async def scan_two(namespace: str) -> list[PodIssue]:
+    return [
+        PodIssue(name="pod-a", namespace=namespace, status="ImagePullBackOff",
+                 reason="ImagePullBackOff", message="a"),
+        PodIssue(name="pod-b", namespace=namespace, status="OOMKilled",
+                 reason="OOMKilled", message="b"),
+    ]
+
+
+@activity.defn(name="get_pod_details")
+async def details_echo(pod_name: str, namespace: str) -> str:
+    return pod_name  # echo so diagnose can key off it
+
+
+@activity.defn(name="diagnose_pod")
+async def diagnose_echo(pod_details: str) -> Diagnosis:
+    return Diagnosis(pod_name=pod_details, root_cause="x", severity="high",
+                     action="fix_image", explanation="e",
+                     fix_details={"image": "nginx:latest"}, namespace="default")
+
+
+ACTIVITIES_TWO = [scan_two, details_echo, diagnose_echo, fix]
+
+
 async def _await_phase(handle, phase: str, tries: int = 60):
     for _ in range(tries):
         state = await handle.query(HealerWorkflow.get_state)
@@ -69,6 +96,15 @@ async def _await_phase(handle, phase: str, tries: int = 60):
             return state
         await asyncio.sleep(0.1)
     raise AssertionError(f"workflow never reached phase {phase!r}")
+
+
+async def _await_result(handle, pod: str, tries: int = 60):
+    for _ in range(tries):
+        state = await handle.query(HealerWorkflow.get_state)
+        if any(r["pod_name"] == pod for r in state["results"]):
+            return state
+        await asyncio.sleep(0.1)
+    raise AssertionError(f"pod {pod} never executed")
 
 
 async def test_heal_survives_multiday_wait_then_completes():
@@ -118,3 +154,30 @@ async def test_reject_skips_execution(workflow_env):
         await handle.signal(HealerWorkflow.reject_pod, "bad-pod")
         result = await handle.result()
         assert "Healed 0/1" in result
+
+
+async def test_each_pod_heals_as_it_is_approved(workflow_env):
+    """Incremental HITL: approving one pod applies its fix IMMEDIATELY while the
+    other stays pending — pods heal click-by-click, not all-at-once at the end."""
+    client = workflow_env.client
+    async with Worker(client, task_queue=TASK_QUEUE,
+                      workflows=[HealerWorkflow], activities=ACTIVITIES_TWO):
+        handle = await client.start_workflow(
+            HealerWorkflow.run,
+            HealerInput(namespace="default", auto_approve=False),
+            id=_wf_id("heal-incr"), task_queue=TASK_QUEUE,
+        )
+        await _await_phase(handle, "awaiting_approval")
+
+        # Approve only pod-a → its fix runs now, while pod-b is still undecided.
+        await handle.signal(HealerWorkflow.approve_pod, "pod-a")
+        state = await _await_result(handle, "pod-a")
+        results = {r["pod_name"]: r for r in state["results"]}
+        assert results["pod-a"]["success"] is True
+        assert "pod-b" not in results                      # pod-b not touched yet
+        assert state["phase"] == "awaiting_approval"        # still waiting on pod-b
+
+        # Approve pod-b → the heal completes.
+        await handle.signal(HealerWorkflow.approve_pod, "pod-b")
+        result = await handle.result()
+        assert "Healed 2/2" in result

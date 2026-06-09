@@ -104,48 +104,56 @@ class HealerWorkflow:
             )
             self._diagnoses.append(diagnosis)
 
-        # Phase 3: Approval gate
+        # Phase 3 + 4: decide, then apply each pod's fix THE MOMENT its decision
+        # lands — so the cluster heals click-by-click, not all-at-once after the last
+        # approval. (Auto mode pre-decides everything, so the loop runs straight through.)
         if auto_approve:
             for d in self._diagnoses:
                 self._decisions[d.pod_name] = "rejected" if d.action == "skip" else "approved"
+            self._phase = "executing"
         else:
             self._phase = "awaiting_approval"
-            workflow.logger.info("Waiting for human approval...")
-            # Durable, indefinite wait: survives worker/MCP-server crashes. A human
-            # (or the agent) can take minutes or days to approve — the workflow simply
-            # waits, forever if need be. No timeout: a timeout here would RAISE and
-            # crash the heal, defeating the durability guarantee this demo is about.
-            await workflow.wait_condition(self._all_decided)
-            workflow.logger.info("All decisions received.")
+            workflow.logger.info("Waiting for human approval (each fix applies as it's approved)...")
 
-        # Phase 4: Execute approved fixes
-        self._phase = "executing"
-
-        for diagnosis in self._diagnoses:
-            decision = self._decisions.get(diagnosis.pod_name, "rejected")
-
-            if decision == "approved" and diagnosis.action != "skip":
-                workflow.logger.info(f"Fixing {diagnosis.pod_name}: {diagnosis.action}")
-                result = await workflow.execute_activity(
-                    execute_fix,
-                    diagnosis,
-                    start_to_close_timeout=timedelta(seconds=30),
+        processed: set[str] = set()
+        while len(processed) < len(self._diagnoses):
+            # Durable, indefinite wait for the NEXT decision: survives worker/MCP-server
+            # crashes; a human can take minutes or days. No timeout (it would RAISE and
+            # crash the heal). Phase stays 'awaiting_approval' while any pod is still
+            # undecided, so the remaining approve/reject buttons keep showing.
+            await workflow.wait_condition(
+                lambda: any(
+                    d.pod_name in self._decisions and d.pod_name not in processed
+                    for d in self._diagnoses
                 )
-                self._results.append({
-                    "pod_name": result.pod_name,
-                    "success": result.success,
-                    "action_taken": result.action_taken,
-                    "details": result.details,
-                })
-            else:
-                reason = diagnosis.explanation if diagnosis.action == "skip" else "Rejected by user"
-                workflow.logger.info(f"Skipping {diagnosis.pod_name}: {reason}")
-                self._results.append({
-                    "pod_name": diagnosis.pod_name,
-                    "success": False,
-                    "action_taken": "skipped",
-                    "details": reason,
-                })
+            )
+            for diagnosis in self._diagnoses:
+                pod = diagnosis.pod_name
+                if pod in processed or pod not in self._decisions:
+                    continue
+                if self._decisions[pod] == "approved" and diagnosis.action != "skip":
+                    workflow.logger.info(f"Fixing {pod}: {diagnosis.action}")
+                    result = await workflow.execute_activity(
+                        execute_fix,
+                        diagnosis,
+                        start_to_close_timeout=timedelta(seconds=30),
+                    )
+                    self._results.append({
+                        "pod_name": result.pod_name,
+                        "success": result.success,
+                        "action_taken": result.action_taken,
+                        "details": result.details,
+                    })
+                else:
+                    reason = diagnosis.explanation if diagnosis.action == "skip" else "Rejected by user"
+                    workflow.logger.info(f"Skipping {pod}: {reason}")
+                    self._results.append({
+                        "pod_name": pod,
+                        "success": False,
+                        "action_taken": "skipped",
+                        "details": reason,
+                    })
+                processed.add(pod)
 
         # Phase 5: Done
         self._phase = "done"
