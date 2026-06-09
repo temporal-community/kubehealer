@@ -54,8 +54,8 @@ async def test_dashboard_renders_and_connects():
         for panel in ("AI Agent", "MCP Server", "Kubernetes Cluster", "Your Approvals"):
             assert await page.get_by_text(panel, exact=False).count() >= 1
 
-        # Core control buttons exist (plain-English labels).
-        assert await page.get_by_role("button", name="Auto Heal").count() == 1
+        # Core control buttons exist (plain-English labels; single Heal button).
+        assert await page.get_by_role("button", name="Heal (you approve)").count() == 1
         assert await page.get_by_role("button", name="Break MCP Server").count() == 1
 
         # The durable plane connects: the Temporal badge must go LIVE (this is the

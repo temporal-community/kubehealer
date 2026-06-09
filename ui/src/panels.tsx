@@ -40,7 +40,6 @@ export function ControlBar() {
     <div className="controls">
       <button className="btn amber" onClick={() => send({ action: "inject_chaos" })}>Break Pods (Inject Chaos)</button>
       <button className="btn" onClick={() => send({ action: "start_heal", mode: "hitl" })}>▶ Heal (you approve)</button>
-      <button className="btn" onClick={() => send({ action: "start_heal", mode: "auto" })}>Auto Heal (AI decides)</button>
       <button className="btn" onClick={() => send({ action: "reset_cluster" })}>Reset</button>
       <span className="spacer" />
       <span className="hint">kill the AI's link — Temporal keeps healing ↓</span>
@@ -238,18 +237,6 @@ export function ApprovalDrawer() {
           })}
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ── Log ticker ─────────────────────────────────────────── */
-export function LogBar() {
-  const logs = useStore((s) => s.logs);
-  return (
-    <div className="logbar">
-      {logs.slice(-6).map((l, i) => (
-        <span className={`ll ${l.level}`} key={i}>› {l.msg}</span>
-      ))}
     </div>
   );
 }

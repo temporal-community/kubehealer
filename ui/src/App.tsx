@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import type { ReactNode } from "react";
 import {
-  AgentPanel, ApprovalDrawer, ClusterPanel, ControlBar, Header, LogBar, McpPanel,
+  AgentPanel, ApprovalDrawer, ClusterPanel, ControlBar, Header, McpPanel,
 } from "./panels";
 
 const reveal = {
@@ -36,7 +36,6 @@ export default function App() {
         <Cell i={2} area="cluster"><ClusterPanel /></Cell>
         <Cell i={3} area="hitl"><ApprovalDrawer /></Cell>
       </div>
-      <LogBar />
     </div>
   );
 }
