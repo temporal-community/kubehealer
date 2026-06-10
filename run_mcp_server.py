@@ -30,7 +30,11 @@ def main() -> None:
         mcp.run()
     else:
         print(f"  KubeHealer MCP server: http://{args.host}:{args.port}/mcp")
-        mcp.run(transport="http", host=args.host, port=args.port)
+        # Disable uvicorn's per-request access log: the dashboard health-pings this
+        # endpoint every second (a bare GET → 406), which would otherwise flood the
+        # terminal. Startup + real errors still print.
+        mcp.run(transport="http", host=args.host, port=args.port,
+                uvicorn_config={"access_log": False})
 
 
 if __name__ == "__main__":
