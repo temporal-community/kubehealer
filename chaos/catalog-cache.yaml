@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: web-app
+  name: catalog-cache
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: web-app
+      app: catalog-cache
   template:
     metadata:
       labels:
-        app: web-app
+        app: catalog-cache
     spec:
       containers:
-      - name: nginx
-        image: nginx:latestt
+      - name: redis
+        image: redis:latst
         ports:
-        - containerPort: 80
+        - containerPort: 6379

@@ -58,7 +58,17 @@ from workflows.conversation_workflow import ConversationWorkflow
 
 
 async def main():
-    client = await Client.connect("localhost:7233")
+    target = os.environ.get("TEMPORAL_TARGET", "localhost:7233")
+    client = None
+    for attempt in range(30):  # tolerate Temporal still starting (compose)
+        try:
+            client = await Client.connect(target)
+            break
+        except Exception as e:
+            print(f"  waiting for Temporal at {target} ({attempt + 1}/30): {e}")
+            await asyncio.sleep(2)
+    if client is None:
+        sys.exit(f"Could not connect to Temporal at {target}")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         worker = Worker(

@@ -2,7 +2,15 @@ temporalio>=1.9.0
 anthropic>=0.42.0
 kubernetes>=31.0.0
 python-dotenv>=1.0.0
+fastmcp[tasks]>=2.14    # MCP server + SEP-1686 Tasks (task=True; needs the tasks extra). Tested 3.3.x
+
+# Live dashboard gateway (dashboard/ + ui/)
+fastapi>=0.115
+uvicorn[standard]>=0.30
+websockets>=12.0
 
 # Test-only
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
+# Optional: browser e2e (tests/test_dashboard_e2e.py) — skipped if not installed.
+#   pip install playwright && playwright install chromium

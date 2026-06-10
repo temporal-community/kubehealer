@@ -1,0 +1,237 @@
+:root {
+  --bg: #06080a;
+  --bg2: #0a0e12;
+  --panel: rgba(13, 18, 22, 0.72);
+  --line: rgba(61, 252, 164, 0.14);
+  --line-strong: rgba(61, 252, 164, 0.38);
+  --green: #3dfca4;
+  --green-dim: rgba(61, 252, 164, 0.55);
+  --amber: #ffb347;
+  --red: #ff5a4d;
+  --blue: #57c7ff;
+  --text: #cfe7dd;
+  --dim: #5e7079;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --display: "Chakra Petch", var(--mono);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root { height: 100%; }
+
+body {
+  font-family: var(--mono);
+  color: var(--text);
+  background:
+    radial-gradient(1200px 700px at 75% -10%, rgba(61, 252, 164, 0.07), transparent 60%),
+    radial-gradient(900px 600px at 0% 110%, rgba(87, 199, 255, 0.05), transparent 60%),
+    var(--bg);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* soft vignette only — scanlines + film grain removed to reduce visual noise */
+body::after {
+  content: "";
+  position: fixed; inset: 0; z-index: 9998; pointer-events: none;
+  box-shadow: inset 0 0 160px 0 rgba(0,0,0,0.5);
+}
+
+/* ── layout ─────────────────────────────────────────────── */
+.app { height: 100%; display: flex; flex-direction: column; padding: 14px; gap: 12px; }
+
+.grid {
+  flex: 1; min-height: 0;
+  display: grid;
+  /* Agent is the secondary/busy box — give it a slim column so the MCP signal +
+     pods dominate. */
+  grid-template-columns: 0.78fr 1.22fr;
+  /* cluster gets a firm min so pod cards always show in full; agent/mcp and the
+     approvals drawer flex around it (each scrolls internally if content overflows). */
+  grid-template-rows: minmax(0, 1.05fr) minmax(190px, auto) minmax(0, 1.05fr);
+  grid-template-areas:
+    "agent   mcp"
+    "cluster cluster"
+    "hitl    hitl";
+  gap: 12px;
+}
+
+/* ── panel frame ────────────────────────────────────────── */
+.panel {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  flex: 1; width: 100%;
+  display: flex; flex-direction: column; min-height: 0;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
+}
+
+.panel-hd {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 14px; border-bottom: 1px solid var(--line);
+  font-family: var(--display); font-weight: 600; letter-spacing: 0.12em;
+  font-size: 14px; text-transform: uppercase; color: var(--green);
+}
+.panel-hd .tag { color: var(--dim); letter-spacing: 0.05em; font-family: var(--mono); text-transform: none; font-weight: 400; font-size: 11px; }
+.panel-hd .tag-warn { color: var(--amber); }
+
+/* the MCP box reads as the fragile / break-target plane */
+.panel.fragile { border-color: rgba(255,179,71,0.4); box-shadow: inset 0 2px 0 rgba(255,179,71,0.55); }
+.panel.fragile .panel-hd { color: var(--amber); border-bottom-color: rgba(255,179,71,0.3); }
+.panel-bd { padding: 10px 12px; overflow: auto; flex: 1; min-height: 0; }
+.panel-bd::-webkit-scrollbar { width: 6px; }
+.panel-bd::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 3px; }
+
+/* ── header ─────────────────────────────────────────────── */
+.header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand-row { display: flex; align-items: center; gap: 18px; }
+/* animated Temporal logomark (dark-navy on transparent) → crisp white for the dark UI */
+.tlogo { height: 60px; width: auto; display: block; filter: brightness(0) invert(1); }
+.brand-div { width: 1px; height: 36px; background: var(--line-strong); }
+.brand { font-family: var(--display); font-weight: 700; letter-spacing: 0.2em; font-size: 20px; }
+.brand b { color: var(--green); text-shadow: 0 0 18px rgba(61,252,164,0.5); }
+.brand .sub { display:block; font-family: var(--mono); font-size: 10px; letter-spacing: 0.34em; color: var(--dim); font-weight: 400; margin-top: 2px; }
+.badges { display: flex; gap: 10px; align-items: center; }
+
+.badge {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--line); border-radius: 3px; padding: 7px 13px;
+  font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
+}
+.badge-sub { color: var(--dim); }
+.badge.alive .badge-sub { color: var(--green-dim); }
+.badge.dead .badge-sub { color: rgba(255,90,77,0.7); }
+.badge .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); }
+.badge.alive { border-color: var(--line-strong); color: var(--green); }
+.badge.alive .dot { background: var(--green); box-shadow: 0 0 10px var(--green); animation: pulse 1.6s infinite; }
+.badge.dead { border-color: rgba(255,90,77,0.5); color: var(--red); }
+.badge.dead .dot { background: var(--red); box-shadow: 0 0 10px var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+
+/* ── control bar ────────────────────────────────────────── */
+.controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.btn {
+  font-family: var(--mono); font-size: 13px; letter-spacing: 0.05em;
+  color: var(--text); background: rgba(61,252,164,0.04);
+  border: 1px solid var(--line-strong); border-radius: 3px;
+  padding: 9px 14px; cursor: pointer; transition: all .15s ease;
+  text-transform: uppercase;
+}
+.btn:hover { background: rgba(61,252,164,0.12); box-shadow: 0 0 16px rgba(61,252,164,0.18); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn.amber { border-color: rgba(255,179,71,0.5); color: var(--amber); background: rgba(255,179,71,0.05); }
+.btn.amber:hover { background: rgba(255,179,71,0.13); }
+.btn.danger { border-color: rgba(255,90,77,0.6); color: var(--red); background: rgba(255,90,77,0.06); }
+.btn.danger:hover { background: rgba(255,90,77,0.16); box-shadow: 0 0 18px rgba(255,90,77,0.25); }
+.spacer { flex: 1; }
+.hint { font-size: 11px; color: var(--dim); letter-spacing: 0.04em; }
+.mcp-hint {
+  color: var(--amber); border: 1px dashed rgba(255,179,71,0.5);
+  border-radius: 3px; padding: 7px 12px; letter-spacing: 0.06em;
+}
+
+/* ── agent panel ────────────────────────────────────────── */
+.agent-stream { font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.agent-block { margin-bottom: 12px; padding-left: 14px; border-left: 2px solid var(--line-strong); color: var(--text); }
+.agent-block.live { border-color: var(--green); }
+.caret { display: inline-block; width: 8px; height: 15px; background: var(--green); margin-left: 2px; vertical-align: -2px; animation: blink 1s steps(1) infinite; box-shadow: 0 0 8px var(--green); }
+@keyframes blink { 50% { opacity: 0; } }
+.agent-empty { color: var(--dim); font-size: 12px; }
+
+/* ── mcp panel ──────────────────────────────────────────── */
+.mcp-signal {
+  display: flex; align-items: center; gap: 12px; padding: 12px;
+  border: 1px solid var(--line); border-radius: 3px; margin-bottom: 12px; position: relative; overflow: hidden;
+}
+.mcp-signal .state { font-family: var(--display); font-size: 26px; letter-spacing: 0.18em; }
+.mcp-signal.alive .state { color: var(--green); text-shadow: 0 0 18px rgba(61,252,164,0.5); }
+.mcp-signal.dead .state { color: var(--red); text-shadow: 0 0 18px rgba(255,90,77,0.5); }
+.mcp-signal .ekg { flex: 1; height: 34px; }
+.task-chip {
+  display: inline-flex; gap: 8px; align-items: center; font-size: 11px; color: var(--amber);
+  border: 1px dashed rgba(255,179,71,0.5); border-radius: 3px; padding: 4px 9px; margin-bottom: 10px;
+}
+.tool { display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 4px 0; border-bottom: 1px dashed rgba(255,255,255,0.04); }
+.tool .nm { color: var(--green); }
+.tool .ar { color: var(--dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool .st { font-size: 11px; }
+.tool .st.ok { color: var(--green); } .tool .st.err { color: var(--red); } .tool .st.run { color: var(--amber); }
+
+/* ── temporal panel ─────────────────────────────────────── */
+.stepper { display: flex; align-items: center; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+.step { display: flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+.step .pip { width: 11px; height: 11px; border-radius: 50%; border: 1px solid var(--dim); }
+.step.done { color: var(--green-dim); } .step.done .pip { background: var(--green-dim); border-color: var(--green-dim); }
+.step.active { color: var(--green); } .step.active .pip { background: var(--green); border-color: var(--green); box-shadow: 0 0 12px var(--green); animation: pulse 1.2s infinite; }
+.step.gate.active { color: var(--amber); } .step.gate.active .pip { background: var(--amber); border-color: var(--amber); box-shadow: 0 0 12px var(--amber); }
+.step .arr { color: rgba(255,255,255,0.12); }
+.run-id { font-size: 10px; color: var(--dim); margin-bottom: 8px; }
+.history .h-row { display: flex; gap: 10px; font-size: 11px; padding: 3px 0; color: var(--text); border-bottom: 1px solid rgba(255,255,255,0.03); }
+.history .h-id { color: var(--dim); width: 28px; text-align: right; }
+.history .h-lbl { color: var(--green-dim); }
+.history-tag { color: var(--dim); font-size: 10px; }
+
+/* ── cluster panel ──────────────────────────────────────── */
+.pods { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; align-content: start; align-items: start; }
+.pod {
+  min-width: 0; border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px 16px;
+  position: relative; overflow: hidden; transition: border-color .3s, box-shadow .3s;
+}
+.pod .app { font-family: var(--display); font-size: 19px; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+.pod .status { font-size: 16px; font-weight: 600; margin-top: 8px; letter-spacing: 0.06em; text-transform: uppercase; overflow-wrap: anywhere; }
+.pod .meta { font-size: 11px; color: var(--dim); margin-top: 6px; line-height: 1.5; overflow-wrap: anywhere; }
+.pod.bad { border-color: rgba(255,90,77,0.55); box-shadow: inset 0 0 24px rgba(255,90,77,0.06); }
+.pod.bad .status { color: var(--red); }
+.pod.good { border-color: var(--line-strong); box-shadow: inset 0 0 24px rgba(61,252,164,0.05); }
+.pod.good .status { color: var(--green); }
+.pod .bar { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; }
+.pod.bad .bar { background: var(--red); }
+.pod.good .bar { background: var(--green); box-shadow: 0 0 10px var(--green); }
+
+/* ── approval drawer ────────────────────────────────────── */
+.approvals { display: flex; flex-direction: column; gap: 8px; }
+.appr {
+  border: 1px solid rgba(255,179,71,0.4); border-radius: 4px; padding: 10px 12px;
+  display: flex; gap: 10px; align-items: center; background: rgba(255,179,71,0.04);
+}
+.appr .info { flex: 1; min-width: 0; }
+.appr .pn { font-size: 12px; color: var(--text); }
+.appr .rc { font-size: 11px; color: var(--dim); }
+.appr .action { font-size: 11px; color: var(--amber); letter-spacing: 0.08em; }
+.mini { font-size: 11px; padding: 6px 10px; }
+.mini.ok { border-color: var(--line-strong); color: var(--green); }
+.mini.no { border-color: rgba(255,90,77,0.5); color: var(--red); }
+.pending { font-size: 11px; letter-spacing: 0.08em; color: var(--dim); font-style: italic; }
+.decided { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+.decided.approved { color: var(--green); } .decided.rejected { color: var(--red); }
+.empty { color: var(--dim); font-size: 12px; }
+
+
+/* ── responsive: stack the planes + scroll on narrow viewports ──────────────── */
+@media (max-width: 880px) {
+  body { overflow: auto; }
+  html, body, #root { height: auto; }
+  .app { height: auto; min-height: 0; }
+  /* Stack the planes and size to CONTENT (the page scrolls) — don't let the grid
+     grow to fill the viewport, which would stretch panels and balloon pod cards. */
+  .grid {
+    flex: 0 0 auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-auto-rows: auto;
+    grid-template-areas: "agent" "mcp" "cluster" "hitl";
+  }
+  .grid > * { min-height: 0; }
+  .agent-stream, .mcp-signal ~ .tools, .panel-bd { max-height: 360px; }
+  .cluster-strip .panel-bd { max-height: none; }   /* let pods show in full */
+  .header { flex-wrap: wrap; gap: 10px; }
+  .badges { flex-wrap: wrap; }
+  .brand { font-size: 17px; }
+}
+@media (max-width: 520px) {
+  .app { padding: 10px; gap: 10px; }
+  .controls .btn { flex: 1 1 auto; }   /* buttons fill the row instead of clipping */
+  .brand .sub { letter-spacing: 0.2em; }
+}

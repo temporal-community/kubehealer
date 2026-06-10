@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 
 from dotenv import load_dotenv
@@ -55,7 +56,7 @@ async def get_or_start_workflow(client: Client, namespace: str):
 
 
 async def main():
-    client = await Client.connect("localhost:7233")
+    client = await Client.connect(os.environ.get("TEMPORAL_TARGET", "localhost:7233"))
     namespace = sys.argv[1] if len(sys.argv) > 1 else "default"
 
     handle, is_new = await get_or_start_workflow(client, namespace)

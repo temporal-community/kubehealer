@@ -51,6 +51,7 @@ async def scan_cluster(namespace: str) -> list[PodIssue]:
     for pod in pods.items:
         pod_name = pod.metadata.name
         phase = pod.status.phase
+        found = False  # one issue per pod — ImagePullBackOff/ConfigError are also phase=Pending
 
         # Check container statuses
         if pod.status.container_statuses:
@@ -66,6 +67,7 @@ async def scan_cluster(namespace: str) -> list[PodIssue]:
                         reason=waiting.reason,
                         message=waiting.message or "",
                     ))
+                    found = True
                     break
 
                 if terminated and terminated.reason == "OOMKilled":
@@ -76,10 +78,11 @@ async def scan_cluster(namespace: str) -> list[PodIssue]:
                         reason="OOMKilled",
                         message="Container was killed due to out-of-memory",
                     ))
+                    found = True
                     break
 
-        # Check for pods stuck in Pending
-        if phase == "Pending" and pod.status.start_time:
+        # Check for pods stuck in Pending (only if not already flagged above)
+        if not found and phase == "Pending" and pod.status.start_time:
             pending_seconds = time.time() - pod.status.start_time.timestamp()
             if pending_seconds > 60:
                 reason = "StuckPending"

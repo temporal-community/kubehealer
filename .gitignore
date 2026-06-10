@@ -3,3 +3,10 @@
 __pycache__/
 *.pyc
 SPEAKER_NOTES.md
+
+# node / build tooling
+node_modules/
+
+# test / OS cruft
+.pytest_cache/
+.DS_Store
