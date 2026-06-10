@@ -113,13 +113,16 @@ function Ekg({ alive }: { alive: boolean }) {
   const beat = "M0 17 H30 l5 -11 l5 22 l5 -11 H70 l5 -11 l5 22 l5 -11 H120";
   return (
     <svg className="ekg" viewBox="0 0 120 34" preserveAspectRatio="none">
-      <motion.g
-        animate={{ x: [0, -120] }}
-        transition={{ repeat: Infinity, duration: 1.8, ease: "linear" }}
-      >
+      {/* Two copies side by side; scroll the group by one full copy (120 viewBox
+          units) so it loops seamlessly. animateTransform works in the SVG's own
+          units, so the scroll is smooth no matter how wide the panel stretches it
+          (a pixel-based transform only nudged it a few px → looked static). */}
+      <g>
         <path d={beat} fill="none" stroke="var(--green)" strokeWidth="1.5" />
         <path d={beat} fill="none" stroke="var(--green)" strokeWidth="1.5" transform="translate(120,0)" />
-      </motion.g>
+        <animateTransform attributeName="transform" type="translate"
+          from="0 0" to="-120 0" dur="2.6s" repeatCount="indefinite" />
+      </g>
     </svg>
   );
 }
