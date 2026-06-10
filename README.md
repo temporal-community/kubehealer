@@ -1,149 +1,127 @@
-# KubeHealer
+<div align="center">
+
+# 🩺 KubeHealer
+
+**An AI agent that heals broken Kubernetes pods — fronted by a crash-proof MCP server, made durable by Temporal.**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue?logo=python&logoColor=white)](https://python.org)
 [![Temporal](https://img.shields.io/badge/Temporal-Durable_Execution-8B5CF6?logo=temporal&logoColor=white)](https://temporal.io)
-[![Anthropic Claude](https://img.shields.io/badge/Claude-Sonnet_4-D97757?logo=anthropic&logoColor=white)](https://anthropic.com)
+[![Claude](https://img.shields.io/badge/Claude-Sonnet_4-D97757?logo=anthropic&logoColor=white)](https://anthropic.com)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-Cluster_Ops-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> AI-powered Kubernetes debugging and auto-remediation, orchestrated by Temporal —
-> exposed as a **crash-proof MCP server**.
+<br>
 
-AI agent that finds broken Kubernetes pods, diagnoses them with Claude, and fixes
-them automatically. The healing logic runs inside **Temporal workflows**, and the
-whole thing is fronted by an **MCP server** that is deliberately disposable: kill it
-mid-heal and the workflow keeps running — restart it and the client re-attaches and
-finishes. That contrast is the point of the demo.
+<!-- 📸 Add your screenshot at docs/images/dashboard.png -->
+<img src="docs/images/dashboard.png" alt="KubeHealer Mission Control dashboard" width="840">
 
-## How It Works
+<sub><i>Mission Control — the fragile MCP plane, the durable Temporal plane, and the cluster healing live.</i></sub>
 
-1. **Scan** — finds unhealthy pods (CrashLoopBackOff, OOMKilled, ImagePullBackOff…)
-2. **Diagnose** — sends pod details to Claude, gets root cause + fix plan
-3. **Approve** — a human (or the agent) approves each fix; the workflow waits, durably
-4. **Fix** — executes remediation (restart, patch image, adjust resources)
-
-Everything runs inside Temporal workflows = crash-proof, retryable, fully observable.
-
-## The crux: a crash-proof MCP server
-
-A basic MCP server keeps its work **inside the process** — kill it mid-task and the
-work, the state, and any in-flight progress die with it. KubeHealer's MCP server keeps
-the work **inside Temporal** and is just a thin pointer to it:
-
-```
-heal_cluster (MCP tool)  ──►  start HealerWorkflow   (id = kubehealer-heal-<ns>)
-get_healing_status       ──►  HealerWorkflow.get_state     (Temporal query)
-approve_fix / reject_fix ──►  HealerWorkflow.approve/reject (Temporal signals)
-```
-
-Because the Workflow ID is **deterministic per namespace**, a crashed-then-restarted
-MCP server re-attaches to the same running workflow by recomputing the ID — no lost
-steps, no double-applied fixes. See [`CRASHPROOF_MCP.md`](CRASHPROOF_MCP.md) for the
-full naive-vs-durable contrast with code.
-
-## Three ways to drive it
-
-All three talk to the same MCP server + Temporal backend.
-
-- **GUI — Mission Control dashboard** (`make dashboard`): a live web UI showing the
-  agent's reasoning, the MCP plane, the cluster, and human approve/reject buttons.
-- **CLI — agent brain** (`make agent`): an LLM agent (MCP host) that drives the heal
-  from the terminal and reconnects automatically if the MCP server dies.
-- **Headless — one-shot** (`make auto`): scans, diagnoses, and auto-fixes, then exits.
-
-There's also a plain conversational CLI (`make cli`) that chats with Temporal directly
-(no MCP), and a non-durable "before" MCP server (`make mcp-naive`) for the talk's contrast.
-
-## Quick Start
-
-Prerequisites: Python 3.11+, Docker, Kind, Temporal CLI, an Anthropic API key.
-
-```bash
-./setup.sh                                   # kind cluster + broken demo pods
-pip install -r requirements.txt
-cp .env.example .env                         # paste your ANTHROPIC_API_KEY
-```
-
-Then run one piece per terminal (the **MCP server is the one you break**):
-
-```bash
-make temporal     # durable backend + Web UI
-make worker       # runs the workflows + activities
-make mcp          # the MCP server  ← Ctrl-C this to break the demo
-make agent        # CLI agent   (or: make dashboard for the GUI)
-```
-
-`make help` lists every target. **[`RUN.md`](RUN.md)** has the full CLI-only / GUI /
-headless recipes, port overrides, and the break-and-recover demo walkthrough.
-
-## What Gets Fixed
-
-| Broken App | Problem | AI Diagnosis | Auto-Fix |
-|---|---|---|---|
-| storefront | Image `nginx:latestt` (typo) | Detects typo | Patches to `nginx:latest` |
-| checkout-api | 10Mi limit + stress 100M | OOMKilled | Raises memory limit |
-| catalog-cache | Image `redis:latst` (typo) | Detects typo | Patches to `redis:latest` |
-
-## Architecture
-
-```
-  CLI agent  ┐                      ┌──────────────────────┐
-  Dashboard  ┼── MCP (HTTP) ──►     │  MCP server          │  thin & disposable
-  (clients)  ┘   reconnects         │  (FastMCP, SEP-1686) │  — kill it anytime
-                                    └──────────┬───────────┘
-                                  start / signal / query
-                                               ▼
-                          ┌──────────────────────────────────────┐
-                          │  TEMPORAL  ── HealerWorkflow           │  durable plane
-                          │  scan → diagnose → AWAIT APPROVAL → fix │  state persisted
-                          │  activities: scan_cluster, diagnose_pod,│  every step
-                          │              get_pod_details, execute_fix
-                          └──────────────────┬─────────────────────┘
-                                    runs on the Worker
-                                             ▼
-                                       ┌────────────┐
-                                       │ Kubernetes │  (kind cluster)
-                                       └────────────┘
-
-  💥 kill the MCP server  ──►  workflow keeps running, loses nothing.
-     restart it           ──►  same deterministic ID re-attaches to the live run.
-```
-
-The dashboard also keeps a **direct** Temporal + Kubernetes connection (independent of
-MCP), so when you break the MCP plane the audience sees it flatline while the Temporal
-plane and pod cards keep advancing.
-
-### Key Design Decisions
-
-- **MCP server = thin wrapper over Temporal** — tools start/signal/query workflows; no
-  business logic lives in the disposable process.
-- **Deterministic Workflow ID** (`kubehealer-heal-<ns>`) — any client/process re-attaches
-  to the same heal by recomputing the ID; `USE_EXISTING` makes re-calls idempotent.
-- **Indefinite, durable approval wait** — the workflow parks at `awaiting_approval` with
-  no timeout, surviving worker/MCP crashes for as long as it takes a human to decide.
-- **Each Claude call and tool call = separate activity** — individually retryable, visible
-  in the Temporal UI, with per-tool timeouts.
-- **Conversational CLI uses Temporal Updates** + continue-as-new at 50 turns + a fixed
-  workflow ID, so it reconnects to the same conversation after a crash.
-
-## Tech Stack
-
-| Component | Role |
-|-----------|------|
-| ![Temporal](https://img.shields.io/badge/-Temporal-8B5CF6?style=flat-square&logo=temporal&logoColor=white) | Durable workflow orchestration |
-| ![Claude](https://img.shields.io/badge/-Claude_Sonnet_4-D97757?style=flat-square&logo=anthropic&logoColor=white) | LLM diagnosis + conversational agent |
-| FastMCP | MCP server + SEP-1686 durable Tasks |
-| FastAPI + React | Mission Control live dashboard (`dashboard/` + `ui/`) |
-| ![Kubernetes](https://img.shields.io/badge/-Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white) ![Kind](https://img.shields.io/badge/-Kind-326CE5?style=flat-square&logo=kubernetes&logoColor=white) | Target cluster (local Kind) |
-| ![Python](https://img.shields.io/badge/-Python_3.11+-3776AB?style=flat-square&logo=python&logoColor=white) | Everything glued together |
-
-## Built For
-
-AIOps India meetup — demonstrating AIOps, DevOps, AI Agents, and Durable Execution in
-practice. See [`CRASHPROOF_MCP.md`](CRASHPROOF_MCP.md) for the durability deep-dive.
+</div>
 
 ---
 
-<p align="center">
-  <sub>Built with Temporal durable execution and Claude AI</sub>
-</p>
+## The one idea
+
+A normal MCP server keeps its work **inside the process** — kill it mid-task and the state, the LLM diagnoses, the in-flight progress all die with it. KubeHealer's MCP server keeps the work **inside Temporal** and is just a thin pointer to it:
+
+```text
+heal_cluster (MCP tool)   ──►  start HealerWorkflow   (id = kubehealer-heal-<ns>)
+get_healing_status        ──►  HealerWorkflow.get_state      (query)
+approve_fix / reject_fix  ──►  HealerWorkflow.approve/reject  (signals)
+```
+
+The Workflow ID is **deterministic per namespace**, so a crashed-and-restarted MCP server re-attaches to the same running heal by recomputing the ID — **no lost steps, no double-applied fixes.**
+
+> 💥 **Kill the MCP server mid-heal → the Temporal workflow keeps running. Restart it → the client reconnects and finishes.** That contrast is the demo.
+
+Deep dive with naive-vs-durable code: **[`CRASHPROOF_MCP.md`](CRASHPROOF_MCP.md)**.
+
+## See it
+
+Break the MCP plane and watch the durable plane carry on — proof lives in the Temporal Web UI:
+
+<div align="center">
+<!-- 📸 Add your screenshot at docs/images/temporal-ui.png -->
+<img src="docs/images/temporal-ui.png" alt="Temporal Web UI — HealerWorkflow still running after the MCP server was killed" width="840">
+
+<sub><i>The heal workflow stays <b>Running</b> in Temporal even while the MCP server is dead.</i></sub>
+</div>
+
+## Quick start
+
+Prerequisites: Python 3.11+, Docker, Kind, the Temporal CLI, an Anthropic API key.
+
+```bash
+./setup.sh                          # kind cluster + broken demo pods
+pip install -r requirements.txt
+cp .env.example .env                # paste your ANTHROPIC_API_KEY
+```
+
+Then one piece per terminal — **`make mcp` is the one you break**:
+
+```bash
+make temporal      # durable backend + Web UI (:8233)
+make worker        # runs the workflows + activities
+make mcp           # the MCP server   ← Ctrl-C this to break the demo
+make dashboard     # Mission Control  (:8090)   — or `make agent` for the CLI
+```
+
+`make help` lists every target. Full recipes, ports, and the break-and-recover walkthrough: **[`RUN.md`](RUN.md)**.
+
+## The demo, in three clicks
+
+1. **Break Pods** → three services go red.
+2. **Heal (you approve)** → the AI diagnoses each, then *each pod heals the moment you approve it*.
+3. **💥 Break MCP Server** → the MCP plane flatlines, **Temporal stays LIVE and keeps healing** → **Restart** → it reconnects.
+
+| Broken service | Problem | AI fix |
+|---|---|---|
+| `storefront` | image `nginx:latestt` (typo) | patch → `nginx:latest` |
+| `checkout-api` | 10Mi limit + stress → OOMKilled | raise memory limit |
+| `catalog-cache` | image `redis:latst` (typo) | patch → `redis:latest` |
+
+## Architecture
+
+```text
+  CLI agent ┐                    ┌─────────────────────┐
+  Dashboard ┼─ MCP (HTTP) ─────► │  MCP server         │  thin & disposable
+  (clients) ┘   reconnects       │  (FastMCP)          │  — kill it anytime
+                                 └──────────┬──────────┘
+                              start · signal · query
+                                            ▼
+                       ┌──────────────────────────────────────┐
+                       │  TEMPORAL · HealerWorkflow            │  durable plane —
+                       │  scan → diagnose → approve → fix      │  state persisted
+                       │  (each step a retryable activity)     │  every step
+                       └──────────────────┬───────────────────┘
+                                runs on the Worker
+                                          ▼
+                                   ┌────────────┐
+                                   │ Kubernetes │  (local kind cluster)
+                                   └────────────┘
+```
+
+The dashboard also reads Temporal + Kubernetes **directly**, so when the MCP plane flatlines the Temporal plane and pod cards keep advancing on screen.
+
+## Drive it three ways
+
+| Mode | Command | Talks via |
+|---|---|---|
+| **GUI** — Mission Control | `make dashboard` | MCP → Temporal |
+| **CLI** — agent brain | `make agent` | MCP → Temporal |
+| **Headless** — one-shot | `make auto` | Temporal |
+
+Also: `make cli` (plain chat, Temporal-direct, no MCP) and `make mcp-naive` (the non-durable "before" server for the contrast).
+
+## Stack
+
+**Temporal** durable workflows · **Claude (Sonnet 4)** diagnosis + agent · **FastMCP** MCP server with SEP-1686 Tasks · **FastAPI + React** dashboard · **Kubernetes / kind** target cluster · **Python 3.11+**.
+
+---
+
+<div align="center">
+<sub>Built for the AIOps India meetup — AIOps · AI agents · durable execution, in practice.</sub>
+<br>
+<sub>Built with Temporal durable execution and Claude AI.</sub>
+</div>
