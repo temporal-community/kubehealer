@@ -1,0 +1,44 @@
+# Self-contained observability stack for the "Durable & Observable AIOps" demo.
+#
+#   make observability        # bring up Prometheus + Grafana (provisioned)
+#   make observability-down    # tear down
+#
+# Grafana → http://localhost:${GRAFANA_PORT:-3000}  (anonymous viewer; admin/admin)
+# Prometheus → http://localhost:${PROM_PORT:-9090}
+#
+# Prometheus scrapes host services (worker :9469, dashboard :8090) via
+# host.docker.internal. On Docker Desktop/Mac that resolves automatically; the
+# extra_hosts line makes it work on Linux too.
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: kubehealer-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "${PROM_PORT:-9090}:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: kubehealer-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      # Talk-friendly: no login wall, land straight on the dashboard.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+      GF_USERS_DEFAULT_THEME: "dark"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"

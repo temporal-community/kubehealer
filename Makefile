@@ -16,7 +16,7 @@ TEMPORAL_TARGET := localhost:$(TEMPORAL_PORT)
 RUN := TEMPORAL_TARGET=$(TEMPORAL_TARGET) KUBEHEALER_MCP_PORT=$(MCP_PORT) KUBEHEALER_NS=$(NS)
 
 .DEFAULT_GOAL := help
-.PHONY: help temporal worker mcp mcp-naive agent cli dashboard auto chaos reset test
+.PHONY: help temporal worker mcp mcp-naive agent cli dashboard auto chaos reset test observability observability-down
 
 help: ## Show this help
 	@echo "KubeHealer make targets (each runs one piece in its own terminal):"
@@ -57,3 +57,11 @@ reset: ## Recreate the broken pods (fresh demo state)
 
 test: ## Run the pytest suite
 	python -m pytest -q
+
+observability: ## Grafana + Prometheus dashboard (scrapes worker :9469 + dashboard :8090)
+	docker compose -f observability/docker-compose.yml up -d
+	@echo "  Grafana  → http://localhost:$${GRAFANA_PORT:-3000}  (dashboard: KubeHealer — Durable & Observable AIOps)"
+	@echo "  Prometheus → http://localhost:$${PROM_PORT:-9090}"
+
+observability-down: ## Stop the Grafana + Prometheus stack
+	docker compose -f observability/docker-compose.yml down

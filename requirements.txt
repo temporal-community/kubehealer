@@ -8,6 +8,8 @@ fastmcp[tasks]>=2.14    # MCP server + SEP-1686 Tasks (task=True; needs the task
 fastapi>=0.115
 uvicorn[standard]>=0.30
 websockets>=12.0
+httpx>=0.27            # used by dashboard/sources.py (MCP health pinger)
+prometheus-client>=0.20  # /metrics endpoint for the Grafana observability stack
 
 # Test-only
 pytest>=8.0.0

@@ -1,0 +1,22 @@
+# Scrapes the two KubeHealer metric sources on the host:
+#   * worker    :9469  — Temporal SDK metrics (workflows, activities, worker health)
+#   * dashboard :8090  — agentic / fragile-plane metrics (MCP up, pods, heal phase)
+# Fast interval so the live demo (break MCP, heal, kill worker) reacts on screen.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: kubehealer-worker
+    static_configs:
+      - targets: ["host.docker.internal:9469"]
+        labels:
+          plane: durable
+
+  - job_name: kubehealer-dashboard
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8090"]
+        labels:
+          plane: agentic

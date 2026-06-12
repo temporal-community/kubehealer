@@ -65,6 +65,40 @@ make auto         # starter.py: scan → diagnose → auto-fix, then exits
 
 ---
 
+## Observability — Grafana + Prometheus (Durable & Observable AIOps)
+
+A self-contained Grafana stack visualizes the whole story. Two metric sources are
+already wired into the app — no extra flags:
+
+- the **worker** exposes Temporal SDK metrics on `:9469` (workflows, activities,
+  retries, worker task-slots/pollers) — see `worker.py`;
+- the **dashboard** exposes agentic + fragile-plane metrics on `:8090/metrics`
+  (`kubehealer_mcp_up`, pod health, heal phase, pods healed) — see `dashboard/`.
+
+```bash
+make observability      # docker compose: Prometheus (:9090) + Grafana (:3000), pre-provisioned
+make observability-down # stop it
+```
+
+Open Grafana at **http://localhost:3000** (anonymous viewer; admin/admin) → the
+**"KubeHealer — Durable & Observable AIOps"** dashboard loads automatically. Four rows:
+**MCP fragile plane** (up/down timeline, uptime %, outages) · **Workflows & activities**
+(completion rate, latency p95, retries) · **Worker health** (task slots, pollers) ·
+**AIOps self-healing** (healthy vs unhealthy pods, heal phase, pods healed).
+
+The worker and dashboard must be running for their metrics to appear. Prometheus
+scrapes the host via `host.docker.internal`. Ports are overridable
+(`GRAFANA_PORT`, `PROM_PORT`); the worker port via `WORKER_METRICS_ADDR` (default
+`0.0.0.0:9469` — `9464` is avoided because it's a common Temporal default that may
+already be taken).
+
+**Demo beats on the dashboard:** break the MCP server → the MCP row flips to DOWN and
+uptime % dips; run a heal → the AIOps row climbs (unhealthy→healthy, pods healed) and
+the workflow/activity panels light up; `Ctrl-C` the worker → its scrape target drops
+and slots flatline, restart → it recovers.
+
+---
+
 ## Other targets
 
 ```bash

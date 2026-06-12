@@ -165,6 +165,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="KubeHealer Mission Control", lifespan=lifespan)
 
 
+@app.get("/metrics")
+async def metrics_endpoint():
+    """Prometheus scrape target for the agentic / fragile-plane signals.
+
+    The pollers keep these gauges current (see dashboard/metrics.py); the Temporal
+    worker exposes its own SDK metrics on a separate port (see worker.py).
+    """
+    from fastapi import Response
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
     await websocket.accept()

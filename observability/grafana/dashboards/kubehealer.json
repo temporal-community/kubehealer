@@ -1,0 +1,204 @@
+{
+  "uid": "kubehealer-aiops",
+  "title": "KubeHealer — Durable & Observable AIOps",
+  "tags": ["kubehealer", "temporal", "aiops"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "type": "row",
+      "id": 1,
+      "title": "MCP — the fragile plane",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "state-timeline",
+      "id": 2,
+      "title": "MCP vs Temporal — up / down",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 6, "w": 16, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "showValue": "never", "mergeValues": true, "rowHeight": 0.9, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "kubehealer_mcp_up", "legendFormat": "MCP (fragile)" },
+        { "refId": "B", "expr": "kubehealer_temporal_up", "legendFormat": "Temporal (durable)" }
+      ]
+    },
+    {
+      "type": "stat",
+      "id": 3,
+      "title": "MCP uptime (range)",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 90 }, { "color": "green", "value": 99 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "expr": "100 * avg_over_time(kubehealer_mcp_up[$__range])", "legendFormat": "uptime" } ]
+    },
+    {
+      "type": "stat",
+      "id": 4,
+      "title": "MCP outages (range)",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "expr": "floor(changes(kubehealer_mcp_up[$__range]) / 2)", "legendFormat": "outages" } ]
+    },
+
+    {
+      "type": "row",
+      "id": 10,
+      "title": "Workflows & Activities (the durable engine)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 }
+    },
+    {
+      "type": "timeseries",
+      "id": 11,
+      "title": "Workflow completion rate (/s)",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "expr": "sum by (workflow_type) (rate(temporal_workflow_completed[5m]))", "legendFormat": "{{workflow_type}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "id": 12,
+      "title": "Workflow end-to-end latency p95 (s)",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, workflow_type) (rate(temporal_workflow_endtoend_latency_bucket[5m])))", "legendFormat": "p95 {{workflow_type}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "id": 13,
+      "title": "Activity throughput (/s)",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "expr": "sum by (activity_type) (rate(temporal_activity_execution_latency_count[5m]))", "legendFormat": "{{activity_type}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "id": 14,
+      "title": "Activity failures / retries (/s)",
+      "description": "verify_healed retries and any failed attempts. Stays flat until something retries.",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "ops", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 20 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "expr": "sum by (activity_type) (rate(temporal_activity_execution_failed[5m]))", "legendFormat": "{{activity_type}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "id": 15,
+      "title": "Activity execution latency p95 (s)",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, activity_type) (rate(temporal_activity_execution_latency_bucket[5m])))", "legendFormat": "p95 {{activity_type}}" } ]
+    },
+
+    {
+      "type": "row",
+      "id": 20,
+      "title": "Worker health",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }
+    },
+    {
+      "type": "timeseries",
+      "id": 21,
+      "title": "Task slots available",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "expr": "sum by (worker_type) (temporal_worker_task_slots_available)", "legendFormat": "{{worker_type}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "id": 22,
+      "title": "Task slots used",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "expr": "sum by (worker_type) (temporal_worker_task_slots_used)", "legendFormat": "{{worker_type}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "id": 23,
+      "title": "Pollers",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "expr": "sum by (poller_type) (temporal_num_pollers)", "legendFormat": "{{poller_type}}" } ]
+    },
+
+    {
+      "type": "row",
+      "id": 30,
+      "title": "AIOps — self-healing outcome",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 }
+    },
+    {
+      "type": "timeseries",
+      "id": 31,
+      "title": "Pods: healthy vs unhealthy",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 31 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 30, "stacking": { "mode": "none" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Healthy" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } } ] },
+          { "matcher": { "id": "byName", "options": "Unhealthy" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } } ] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "kubehealer_pods_healthy", "legendFormat": "Healthy" },
+        { "refId": "B", "expr": "kubehealer_pods_unhealthy", "legendFormat": "Unhealthy" },
+        { "refId": "C", "expr": "kubehealer_pods_total", "legendFormat": "Total" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 32,
+      "title": "Heal phase (active = 1)",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 7, "w": 8, "x": 12, "y": 31 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 20 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "expr": "kubehealer_heal_phase != 0", "legendFormat": "{{phase}}" } ]
+    },
+    {
+      "type": "stat",
+      "id": 33,
+      "title": "Pods healed (current run)",
+      "datasource": { "type": "prometheus", "uid": "PROM" },
+      "gridPos": { "h": 7, "w": 4, "x": 20, "y": 31 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "text", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "expr": "kubehealer_pods_healed", "legendFormat": "healed" } ]
+    }
+  ]
+}
