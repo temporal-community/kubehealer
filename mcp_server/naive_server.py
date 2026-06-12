@@ -88,7 +88,8 @@ def main() -> None:
         mcp.run()
     else:
         print(f"  NAIVE MCP server (non-durable): http://{args.host}:{args.port}/mcp")
-        mcp.run(transport="http", host=args.host, port=args.port)
+        mcp.run(transport="http", host=args.host, port=args.port,
+                uvicorn_config={"access_log": False})
 
 
 if __name__ == "__main__":
