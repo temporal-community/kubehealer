@@ -1,3 +1,4 @@
+import asyncio
 import re
 import time
 
@@ -262,6 +263,9 @@ async def execute_fix(diagnosis: Diagnosis) -> HealResult:
         )
 
     if action == "restart_pod":
+        # Resolve the owning deployment BEFORE deleting the pod (verify_healed watches
+        # the deployment's rollout, since the recreated pod gets a brand-new name).
+        deployment_name = _get_deployment_name(pod_name, namespace)
         v1.delete_namespaced_pod(name=pod_name, namespace=namespace)
         activity.logger.info(f"Deleted pod '{pod_name}' (will be recreated by deployment)")
         return HealResult(
@@ -269,6 +273,7 @@ async def execute_fix(diagnosis: Diagnosis) -> HealResult:
             success=True,
             action_taken="restart_pod",
             details="Deleted pod to trigger restart",
+            deployment=deployment_name,
         )
 
     # For fix_image and patch_resources, we need the deployment
@@ -299,6 +304,7 @@ async def execute_fix(diagnosis: Diagnosis) -> HealResult:
             success=True,
             action_taken="fix_image",
             details=f"Patched image to {correct_image}",
+            deployment=deployment_name,
         )
 
     if action == "patch_resources":
@@ -324,6 +330,7 @@ async def execute_fix(diagnosis: Diagnosis) -> HealResult:
             success=True,
             action_taken="patch_resources",
             details=f"Patched memory limit to {memory}",
+            deployment=deployment_name,
         )
 
     return HealResult(
@@ -331,4 +338,42 @@ async def execute_fix(diagnosis: Diagnosis) -> HealResult:
         success=False,
         action_taken=action,
         details=f"Unknown action: {action}",
+    )
+
+
+@activity.defn
+async def verify_healed(deployment_name: str, namespace: str) -> bool:
+    """Confirm a Deployment's rollout actually recovered after a fix.
+
+    A patch being *accepted* isn't proof the pod is *healthy* — the image still has to
+    pull and the container has to pass readiness, which takes 10–30s. This activity
+    polls the Deployment's rollout status and raises (retryable) until it settles, so
+    the heal isn't declared done until the cluster really recovered.
+
+    It's also the visual centerpiece in the Temporal Web UI: each poll calls
+    `activity.heartbeat`, so the Pending Activities panel shows a live heartbeat; and
+    because it raises until healthy, the activity's RetryPolicy backs off and retries —
+    surfacing a climbing attempt count and a next-retry countdown. All of that keeps
+    advancing on screen even while the MCP server is dead.
+    """
+    ready = spec_replicas = 0
+    unavailable = 0
+    for i in range(3):
+        activity.heartbeat(f"checking '{deployment_name}' rollout (poll {i + 1}/3)")
+        dep = apps_v1.read_namespaced_deployment(name=deployment_name, namespace=namespace)
+        spec_replicas = dep.spec.replicas or 1
+        status = dep.status
+        ready = status.ready_replicas or 0
+        unavailable = status.unavailable_replicas or 0
+        updated = status.updated_replicas or 0
+        if ready >= spec_replicas and unavailable == 0 and updated >= spec_replicas:
+            activity.logger.info(f"'{deployment_name}' healthy: {ready}/{spec_replicas} ready")
+            return True
+        await asyncio.sleep(2)
+
+    # Not settled within this attempt → raise so the RetryPolicy backs off and retries
+    # (the attempt count + backoff timer are what light up the Web UI).
+    raise RuntimeError(
+        f"'{deployment_name}' not healthy yet "
+        f"({ready}/{spec_replicas} ready, {unavailable} unavailable) — retrying"
     )

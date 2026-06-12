@@ -44,7 +44,7 @@ preflight_checks()
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from activities.k8s_activities import scan_cluster, get_pod_details, execute_fix
+from activities.k8s_activities import scan_cluster, get_pod_details, execute_fix, verify_healed
 from activities.llm_activities import diagnose_pod
 from activities.chat_activities import (
     call_claude,
@@ -54,6 +54,7 @@ from activities.chat_activities import (
     get_pod_events_activity,
 )
 from workflows.healer_workflow import HealerWorkflow
+from workflows.heal_pod_workflow import HealPodWorkflow
 from workflows.conversation_workflow import ConversationWorkflow
 
 
@@ -70,16 +71,29 @@ async def main():
     if client is None:
         sys.exit(f"Could not connect to Temporal at {target}")
 
+    # Register the heal's custom Search Attributes up front so the workflow's live
+    # phase/progress show in the Web UI. Best-effort: a server that doesn't support
+    # the operator API shouldn't stop the worker from running.
+    from search_attributes import ensure_registered
+    try:
+        await ensure_registered(client)
+        print("  [OK] Search Attributes registered")
+    except Exception as e:
+        print(f"  [warn] could NOT register Search Attributes ({e}).")
+        print("         Heals run normally, but ones started with track_phase=True will")
+        print("         fail on upsert. Register them on the server, or start with track_phase=False.")
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         worker = Worker(
             client,
             task_queue="kubehealer",
-            workflows=[HealerWorkflow, ConversationWorkflow],
+            workflows=[HealerWorkflow, HealPodWorkflow, ConversationWorkflow],
             activities=[
                 # Healing activities
                 scan_cluster,
                 get_pod_details,
                 execute_fix,
+                verify_healed,
                 diagnose_pod,
                 # Conversation activities
                 call_claude,

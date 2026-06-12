@@ -75,6 +75,12 @@ make help         # list everything
 ```
 
 ## Notes
+- **Search Attributes:** the **worker self-registers** the heal's custom Search
+  Attributes (`HealPhase`, `HealNamespace`, `PodName`, `PodsTotal`, `PodsHealed`) on
+  startup, so the Web UI shows each heal's live phase + progress with no manual setup —
+  nothing to add to the Temporal server command. Registration is idempotent and
+  best-effort: if the server can't register them the worker still runs (it just logs a
+  warning). Tests pass `HealerInput(track_phase=False)` to skip emitting them entirely.
 - `make cli` is a *different* CLI from `make agent`: `cli.py` chats with Temporal
   directly (no MCP), so breaking the MCP server doesn't affect it. `agent/brain.py`
   is the MCP client — that's the one the break demo is about.

@@ -27,12 +27,16 @@ class HealResult:
     success: bool
     action_taken: str
     details: str
+    deployment: str = ""  # workload the fix touched — what verify_healed watches
 
 
 @dataclass
 class HealerInput:
     namespace: str = "default"
     auto_approve: bool = True
+    # Emit custom Search Attributes (HealPhase, PodsHealed, …) for the Web UI. On by
+    # default; tests pass False so they don't need a server with the SAs registered.
+    track_phase: bool = True
 
 
 @dataclass
