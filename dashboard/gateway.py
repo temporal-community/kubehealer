@@ -42,7 +42,7 @@ class Ctx:
     mcp_external: bool = False      # True = MCP runs in its own terminal (we don't manage it)
     temporal: Client
     agent_session: HealerSession  # used by the heal/agent task
-    cmd_session: HealerSession     # used by approve/reject buttons
+    cmd_session: HealerSession     # used by approve/reject buttons (via MCP, on purpose)
     heal_task: asyncio.Task | None = None
     bg: list[asyncio.Task] = []
 
@@ -84,6 +84,9 @@ async def handle_command(cmd: dict) -> None:
         ctx.heal_task = asyncio.create_task(_job())
 
     elif action in ("approve", "reject"):
+        # Approvals route THROUGH the MCP server on purpose: the demo's whole point is
+        # that the MCP plane is the fragile link. Kill it and approvals can't get
+        # through — the heal stays parked until MCP is back and the client reconnects.
         tool = "approve_fix" if action == "approve" else "reject_fix"
         await ctx.cmd_session.call(tool, {"pod_name": cmd["pod"], "namespace": ns})
 

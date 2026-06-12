@@ -24,8 +24,10 @@ from datetime import timedelta
 
 from models import Diagnosis, HealResult, HealerInput, PodIssue
 from workflows.healer_workflow import HealerWorkflow
+from workflows.heal_pod_workflow import HealPodWorkflow
 
 TASK_QUEUE = "kubehealer-test"
+WORKFLOWS = [HealerWorkflow, HealPodWorkflow]  # parent + per-pod child
 
 
 def _wf_id(name: str) -> str:
@@ -56,10 +58,15 @@ async def diagnose(pod_details: str) -> Diagnosis:
 @activity.defn(name="execute_fix")
 async def fix(diagnosis: Diagnosis) -> HealResult:
     return HealResult(pod_name=diagnosis.pod_name, success=True,
-                      action_taken=diagnosis.action, details="patched")
+                      action_taken=diagnosis.action, details="patched", deployment="dep")
 
 
-ACTIVITIES = [scan_one, details, diagnose, fix]
+@activity.defn(name="verify_healed")
+async def verify_ok(deployment_name: str, namespace: str) -> bool:
+    return True
+
+
+ACTIVITIES = [scan_one, details, diagnose, fix, verify_ok]
 
 
 # Two-pod stubs (for the incremental-approval test): details echoes the pod name so
@@ -86,7 +93,23 @@ async def diagnose_echo(pod_details: str) -> Diagnosis:
                      fix_details={"image": "nginx:latest"}, namespace="default")
 
 
-ACTIVITIES_TWO = [scan_two, details_echo, diagnose_echo, fix]
+ACTIVITIES_TWO = [scan_two, details_echo, diagnose_echo, fix, verify_ok]
+
+
+# Flaky verify: fails the first two attempts, then reports healthy — exercises the
+# child workflow's verify_healed RetryPolicy (the backoff is what the Web UI shows).
+_verify_calls = {"n": 0}
+
+
+@activity.defn(name="verify_healed")
+async def verify_flaky(deployment_name: str, namespace: str) -> bool:
+    _verify_calls["n"] += 1
+    if _verify_calls["n"] < 3:
+        raise RuntimeError("rollout not healthy yet")
+    return True
+
+
+ACTIVITIES_FLAKY = [scan_one, details, diagnose, fix, verify_flaky]
 
 
 async def _await_phase(handle, phase: str, tries: int = 60):
@@ -117,10 +140,10 @@ async def test_heal_survives_multiday_wait_then_completes():
     try:
         client = env.client
         async with Worker(client, task_queue=TASK_QUEUE,
-                          workflows=[HealerWorkflow], activities=ACTIVITIES):
+                          workflows=WORKFLOWS, activities=ACTIVITIES):
             handle = await client.start_workflow(
                 HealerWorkflow.run,
-                HealerInput(namespace="default", auto_approve=False),
+                HealerInput(namespace="default", auto_approve=False, track_phase=False),
                 id=_wf_id("heal-wait"), task_queue=TASK_QUEUE,
             )
             await _await_phase(handle, "awaiting_approval")
@@ -144,10 +167,10 @@ async def test_reject_skips_execution(workflow_env):
     """Sanity: rejecting the only pod completes the heal with nothing fixed."""
     client = workflow_env.client
     async with Worker(client, task_queue=TASK_QUEUE,
-                      workflows=[HealerWorkflow], activities=ACTIVITIES):
+                      workflows=WORKFLOWS, activities=ACTIVITIES):
         handle = await client.start_workflow(
             HealerWorkflow.run,
-            HealerInput(namespace="default", auto_approve=False),
+            HealerInput(namespace="default", auto_approve=False, track_phase=False),
             id=_wf_id("heal-reject"), task_queue=TASK_QUEUE,
         )
         await _await_phase(handle, "awaiting_approval")
@@ -161,10 +184,10 @@ async def test_each_pod_heals_as_it_is_approved(workflow_env):
     other stays pending — pods heal click-by-click, not all-at-once at the end."""
     client = workflow_env.client
     async with Worker(client, task_queue=TASK_QUEUE,
-                      workflows=[HealerWorkflow], activities=ACTIVITIES_TWO):
+                      workflows=WORKFLOWS, activities=ACTIVITIES_TWO):
         handle = await client.start_workflow(
             HealerWorkflow.run,
-            HealerInput(namespace="default", auto_approve=False),
+            HealerInput(namespace="default", auto_approve=False, track_phase=False),
             id=_wf_id("heal-incr"), task_queue=TASK_QUEUE,
         )
         await _await_phase(handle, "awaiting_approval")
@@ -181,3 +204,26 @@ async def test_each_pod_heals_as_it_is_approved(workflow_env):
         await handle.signal(HealerWorkflow.approve_pod, "pod-b")
         result = await handle.result()
         assert "Healed 2/2" in result
+
+
+async def test_child_retries_verify_until_healthy(workflow_env):
+    """The per-pod child workflow keeps retrying verify_healed until the rollout is
+    healthy — a fix isn't 'done' until recovery is confirmed. Time-skipping fast-
+    forwards the retry backoff; the heal still completes and counts the pod healed."""
+    _verify_calls["n"] = 0
+    client = workflow_env.client
+    async with Worker(client, task_queue=TASK_QUEUE,
+                      workflows=WORKFLOWS, activities=ACTIVITIES_FLAKY):
+        handle = await client.start_workflow(
+            HealerWorkflow.run,
+            HealerInput(namespace="default", auto_approve=False, track_phase=False),
+            id=_wf_id("heal-verify"), task_queue=TASK_QUEUE,
+        )
+        await _await_phase(handle, "awaiting_approval")
+        await handle.signal(HealerWorkflow.approve_pod, "bad-pod")
+        result = await handle.result()
+        assert "Healed 1/1" in result
+        assert _verify_calls["n"] >= 3              # verify was retried, not one-shot
+        state = await handle.query(HealerWorkflow.get_state)
+        details = state["results"][0]["details"]
+        assert "verified healthy" in details
