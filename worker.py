@@ -42,6 +42,7 @@ def preflight_checks():
 preflight_checks()
 
 from temporalio.client import Client
+from temporalio.runtime import Runtime, TelemetryConfig, PrometheusConfig
 from temporalio.worker import Worker
 
 from activities.k8s_activities import scan_cluster, get_pod_details, execute_fix, verify_healed
@@ -60,10 +61,22 @@ from workflows.conversation_workflow import ConversationWorkflow
 
 async def main():
     target = os.environ.get("TEMPORAL_TARGET", "localhost:7233")
+
+    # Expose the SDK's Prometheus metrics (workflow/activity/worker health) so Grafana
+    # can scrape the durable plane. durations_as_seconds keeps latency histograms in
+    # seconds (Prometheus convention). Default port 9469 (9464 is a common Temporal
+    # default and may already be taken on a dev box); override with WORKER_METRICS_ADDR.
+    metrics_addr = os.environ.get("WORKER_METRICS_ADDR", "0.0.0.0:9469")
+    runtime = Runtime(telemetry=TelemetryConfig(metrics=PrometheusConfig(
+        bind_address=metrics_addr,
+        durations_as_seconds=True,
+    )))
+    print(f"  [OK] Worker metrics on http://{metrics_addr}/metrics")
+
     client = None
     for attempt in range(30):  # tolerate Temporal still starting (compose)
         try:
-            client = await Client.connect(target)
+            client = await Client.connect(target, runtime=runtime)
             break
         except Exception as e:
             print(f"  waiting for Temporal at {target} ({attempt + 1}/30): {e}")

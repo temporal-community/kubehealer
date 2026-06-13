@@ -15,6 +15,7 @@ from temporalio.client import Client, WorkflowExecutionStatus
 from temporalio.service import RPCError
 
 from activities.k8s_activities import v1
+from dashboard import metrics
 from mcp_server.temporal_client import heal_workflow_id
 
 POLL_SECONDS = 1.0
@@ -57,6 +58,7 @@ async def pod_poller(hub, namespace: str = "default") -> None:
     while True:
         try:
             pods = await asyncio.to_thread(_pod_snapshot, namespace)
+            metrics.set_pods(len(pods), sum(1 for p in pods if p["healthy"]))
             await hub.broadcast({"type": "pods", "pods": pods})
         except Exception as e:
             await hub.broadcast({"type": "log", "level": "warn", "msg": f"pod poll: {e}"})
@@ -99,6 +101,9 @@ async def temporal_poller(hub, client: Client, namespace: str = "default") -> No
                 # Reaching here means the visibility query succeeded → Temporal is up,
                 # there's just no heal workflow yet. Report LIVE so the badge is honest
                 # before the first heal (otherwise it sticks on DOWN).
+                metrics.set_temporal_up(True)
+                metrics.set_heal_phase("not_started")
+                metrics.set_pods_healed(0)
                 await hub.broadcast({"type": "temporal_health", "alive": True})
                 await hub.broadcast({"type": "workflow", "phase": "not_started", "run_id": None})
                 await asyncio.sleep(POLL_SECONDS)
@@ -117,6 +122,8 @@ async def temporal_poller(hub, client: Client, namespace: str = "default") -> No
                     d["pod_name"] for d in state.get("diagnoses", []) if d["pod_name"] not in decided
                 ]
                 state["type"] = "workflow"
+                metrics.set_heal_phase(state.get("phase", "not_started"))
+                metrics.set_pods_healed(sum(1 for r in state.get("results", []) if r.get("success")))
                 await hub.broadcast(state)
             except RPCError:
                 pass  # completed runs can't always be queried; history still flows
@@ -132,8 +139,10 @@ async def temporal_poller(hub, client: Client, namespace: str = "default") -> No
                     })
             if new_events:
                 await hub.broadcast({"type": "history", "events": new_events})
+            metrics.set_temporal_up(True)
             await hub.broadcast({"type": "temporal_health", "alive": True})
         except Exception as e:
+            metrics.set_temporal_up(False)
             await hub.broadcast({"type": "temporal_health", "alive": False})
             await hub.broadcast({"type": "log", "level": "warn", "msg": f"temporal poll: {e}"})
         await asyncio.sleep(POLL_SECONDS)
@@ -152,6 +161,7 @@ async def mcp_health_pinger(hub, url: str) -> None:
                 alive = resp.status_code < 500 or resp.status_code == 406
             except Exception:
                 alive = False
+            metrics.set_mcp_up(alive)
             await hub.broadcast({"type": "mcp_health", "alive": alive})
             # Announce health TRANSITIONS so the log reflects recovery — otherwise the
             # dramatic "💥 KILLED" line lingers and the plane looks dead after it's back.

@@ -33,6 +33,8 @@ approve_fix / reject_fix  ──►  HealerWorkflow.approve/reject  (signals)
 
 The Workflow ID is **deterministic per namespace**, so a crashed-and-restarted MCP server re-attaches to the same running heal by recomputing the ID — **no lost steps, no double-applied fixes.**
 
+Each approved pod heals in its **own child workflow** (`fix → settle → verify`), so the heal isn't "done" until the pod has actually rolled out healthy — and the heartbeating, retrying verify step keeps the Temporal Web UI alive even while the MCP server is down. Live phase + progress surface as custom **Search Attributes**. Click *Approve* five times and you still get exactly one fix.
+
 > 💥 **Kill the MCP server mid-heal → the Temporal workflow keeps running. Restart it → the client reconnects and finishes.** That contrast is the demo.
 
 Deep dive with naive-vs-durable code: **[`CRASHPROOF_MCP.md`](CRASHPROOF_MCP.md)**.
@@ -47,6 +49,23 @@ Break the MCP plane and watch the durable plane carry on — proof lives in the 
 
 <sub><i>The heal workflow stays <b>Running</b> in Temporal even while the MCP server is dead.</i></sub>
 </div>
+
+## Observe it — Grafana
+
+A self-contained Grafana + Prometheus stack tells the *Durable & Observable AIOps* story on one screen. Two metric sources are wired into the app already — the **worker** exposes Temporal SDK metrics (workflows, activities, retries, worker health) and the **dashboard** exposes the agentic / fragile-plane signals (MCP up/down, pod health, heal phase, pods healed).
+
+```bash
+make observability      # Prometheus + Grafana, pre-provisioned (one command)
+```
+
+<div align="center">
+<!-- 📸 Add your screenshot at docs/images/grafana.png -->
+<img src="docs/images/grafana.png" alt="KubeHealer Temporal Dashboard in Grafana" width="840">
+
+<sub><i>Grafana → <b>http://localhost:3000</b> — MCP downtime · workflows &amp; activities · worker health · self-healing.</i></sub>
+</div>
+
+Break the MCP server and the **MCP downtime** row goes red; run a heal and the **AIOps** row climbs while the workflow/activity panels light up; kill the worker and **Worker health** flatlines until it recovers. Setup + demo beats are in the Observability section of **[`RUN.md`](RUN.md)**.
 
 ## Quick start
 
@@ -65,6 +84,7 @@ make temporal      # durable backend + Web UI (:8233)
 make worker        # runs the workflows + activities
 make mcp           # the MCP server   ← Ctrl-C this to break the demo
 make dashboard     # Mission Control  (:8090)   — or `make agent` for the CLI
+make observability # optional: Grafana (:3000) + Prometheus (:9090)
 ```
 
 `make help` lists every target. Full recipes, ports, and the break-and-recover walkthrough: **[`RUN.md`](RUN.md)**.
@@ -92,8 +112,9 @@ make dashboard     # Mission Control  (:8090)   — or `make agent` for the CLI
                                             ▼
                        ┌──────────────────────────────────────┐
                        │  TEMPORAL · HealerWorkflow            │  durable plane —
-                       │  scan → diagnose → approve → fix      │  state persisted
-                       │  (each step a retryable activity)     │  every step
+                       │  scan → diagnose → approve            │  state persisted
+                       │    └─► HealPodWorkflow (per pod):     │  every step;
+                       │        fix → settle → verify ✓        │  metrics ─► Grafana
                        └──────────────────┬───────────────────┘
                                 runs on the Worker
                                           ▼
@@ -102,7 +123,7 @@ make dashboard     # Mission Control  (:8090)   — or `make agent` for the CLI
                                    └────────────┘
 ```
 
-The dashboard also reads Temporal + Kubernetes **directly**, so when the MCP plane flatlines the Temporal plane and pod cards keep advancing on screen.
+The dashboard also reads Temporal + Kubernetes **directly**, so when the MCP plane flatlines the Temporal plane and pod cards keep advancing on screen. Worker + dashboard both export Prometheus metrics for the Grafana stack (`make observability`).
 
 ## Drive it three ways
 
@@ -116,7 +137,7 @@ Also: `make cli` (plain chat, Temporal-direct, no MCP) and `make mcp-naive` (the
 
 ## Stack
 
-**Temporal** durable workflows · **Claude (Sonnet 4)** diagnosis + agent · **FastMCP** MCP server with SEP-1686 Tasks · **FastAPI + React** dashboard · **Kubernetes / kind** target cluster · **Python 3.11+**.
+**Temporal** durable workflows (child workflows · heartbeating retries · search attributes · SDK metrics) · **Claude** diagnosis + agent · **FastMCP** MCP server with SEP-1686 Tasks · **FastAPI + React** dashboard · **Prometheus + Grafana** observability · **Kubernetes / kind** target cluster · **Python 3.11+**.
 
 ---
 
