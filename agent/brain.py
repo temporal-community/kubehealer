@@ -54,7 +54,7 @@ def _client_cls():
 
 
 DEFAULT_SERVER_URL = os.environ.get("KUBEHEALER_MCP_URL", "http://127.0.0.1:8000/mcp")
-MODEL = os.environ.get("KUBEHEALER_MODEL", "claude-sonnet-4-20250514")
+MODEL = os.environ.get("KUBEHEALER_MODEL", "claude-sonnet-4-6")
 MAX_ROUNDS = 40
 
 Emit = Callable[[dict], Awaitable[None]]
