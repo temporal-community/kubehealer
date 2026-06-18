@@ -36,7 +36,7 @@ async def call_claude(request: ClaudeRequest) -> ClaudeResponse:
 
     try:
         response = ai.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=4096,
             system=request.system_prompt,
             tools=request.tools,
